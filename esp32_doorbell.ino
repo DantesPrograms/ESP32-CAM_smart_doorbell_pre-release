@@ -686,18 +686,38 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector
   
   Serial.begin(115200);
-  Serial.println("\n\nESP32-CAM Doorbell Starting...");
+  delay(1000); // Give serial time to initialize
+  
+  Serial.println("\n\n\n");
+  Serial.println("========================================");
+  Serial.println("    ESP32-CAM SMART DOORBELL v1.0");
+  Serial.println("========================================");
+  Serial.println("System Information:");
+  Serial.printf("  Chip Model: %s\n", ESP.getChipModel());
+  Serial.printf("  CPU Frequency: %dMHz\n", ESP.getCpuFreqMHz());
+  Serial.printf("  Free Heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.printf("  PSRAM: %s\n", psramFound() ? "Available" : "Not found");
+  Serial.println("========================================");
+  Serial.println("Initializing system...");
+  Serial.println();
 
   // Configure pins
+  Serial.println("Configuring GPIO pins...");
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   
   digitalWrite(LED_PIN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
+  
+  Serial.println("  GPIO 12 - LEDs (Output)");
+  Serial.println("  GPIO 13 - Button (Input)");
+  Serial.println("  GPIO 14 - Buzzer (Output)");
+  Serial.println("✓ GPIO configured\n");
 
   // Attach button interrupt
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressed, FALLING);
+  Serial.println("✓ Button interrupt attached\n");
 
   // Camera configuration
   camera_config_t config;
@@ -733,44 +753,109 @@ void setup() {
   }
 
   // Initialize camera
+  Serial.println("Initializing camera...");
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x\n", err);
+    Serial.println("========================================");
+    Serial.println("✗ CAMERA INIT FAILED!");
+    Serial.println("========================================");
+    Serial.printf("Error code: 0x%x\n", err);
+    Serial.println("Please check:");
+    Serial.println("1. Camera module is connected properly");
+    Serial.println("2. Ribbon cable is inserted correctly");
+    Serial.println("3. Power supply is adequate (5V 2A)");
+    Serial.println("========================================");
     return;
   }
+  Serial.println("✓ Camera initialized successfully\n");
 
   // Initialize SD card
+  Serial.println("Checking for SD card...");
   if (!SD_MMC.begin()) {
-    Serial.println("SD Card Mount Failed");
+    Serial.println("✗ SD Card Mount Failed (or not inserted)");
+    Serial.println("  Recording features will be disabled\n");
     sdCardAvailable = false;
   } else {
     uint8_t cardType = SD_MMC.cardType();
     if (cardType == CARD_NONE) {
-      Serial.println("No SD card attached");
+      Serial.println("✗ No SD card detected");
+      Serial.println("  Recording features will be disabled\n");
       sdCardAvailable = false;
     } else {
-      Serial.println("SD Card initialized successfully");
+      Serial.println("✓ SD Card initialized successfully");
       sdCardAvailable = true;
-      Serial.printf("SD Card Size: %lluMB\n", SD_MMC.cardSize() / (1024 * 1024));
+      uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+      Serial.printf("  Card Size: %lluMB\n", cardSize);
+      Serial.printf("  Card Type: %s\n", 
+        cardType == CARD_MMC ? "MMC" : 
+        cardType == CARD_SD ? "SD" : 
+        cardType == CARD_SDHC ? "SDHC" : "UNKNOWN");
+      Serial.println();
     }
   }
 
   // Connect to WiFi
+  Serial.println("\n========================================");
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  Serial.println("========================================");
+  
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
     delay(500);
     Serial.print(".");
+    attempts++;
   }
-  Serial.println("\nWiFi connected");
-  Serial.print("Camera Ready! Access at: http://");
-  Serial.println(WiFi.localIP());
+  
+  Serial.println();
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("========================================");
+    Serial.println("✓ WiFi CONNECTED!");
+    Serial.println("========================================");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Access doorbell at: http://");
+    Serial.println(WiFi.localIP());
+    Serial.println("========================================\n");
+  } else {
+    Serial.println("========================================");
+    Serial.println("✗ WiFi CONNECTION FAILED!");
+    Serial.println("========================================");
+    Serial.println("Please check:");
+    Serial.println("1. SSID is correct");
+    Serial.println("2. Password is correct");
+    Serial.println("3. Router is 2.4GHz (not 5GHz)");
+    Serial.println("========================================");
+    while(1); // Stop here if WiFi fails
+  }
 
   // Start web server
   startCameraServer();
   
+  Serial.println("========================================");
+  Serial.println("✓ SYSTEM READY!");
+  Serial.println("========================================");
+  Serial.println("Features Available:");
+  Serial.println("  • Live Video Streaming");
+  Serial.println("  • Motion Detection");
+  Serial.println("  • Snapshot Capture");
+  Serial.println("  • LED Control");
+  Serial.println("  • Doorbell Button");
+  if (sdCardAvailable) {
+    Serial.println("  • Video Recording");
+  }
+  Serial.println();
+  Serial.println("Web Interface:");
+  Serial.print("  http://");
+  Serial.println(WiFi.localIP());
+  Serial.println("========================================\n");
+  
   // Welcome chime
   playDingDong();
+  Serial.println("System startup complete! 🔔\n");
 }
 
 void loop() {
